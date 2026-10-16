@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#174c3c">
+  <title>BlindPath | Route Planner Demo</title>
+
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  >
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, Helvetica, sans-serif;
+      background: #f3f6fa;
+      color: #172033;
+      line-height: 1.5;
+    }
+
+    header {
+      background: #174c3c;
+      color: white;
+      padding: 22px 16px;
+      text-align: center;
+    }
+
+    header h1 {
+      margin: 0 0 6px;
+    }
+
+    header p {
+      margin: 0;
+    }
+
+    .container {
+      max-width: 1000px;
+      margin: 24px auto;
+      padding: 0 16px;
+    }
+
+    .panel {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      margin-bottom: 16px;
+      box-shadow: 0 2px 10px #0000000d;
+    }
+
+    label {
+      display: block;
+      font-weight: bold;
+      margin: 14px 0 6px;
+    }
+
+    .autocomplete-wrapper {
+      position: relative;
+      width: 100%;
+    }
+
+    input, select {
+      display: block;
+      width: 100%;
+      min-height: 46px;
+      padding: 11px 14px;
+      border: 2px solid #ccd3dd;
+      border-radius: 7px;
+      background: white;
+      color: #172033;
+      font: inherit;
+    }
+
+    /* Google Maps style dynamic suggestions list */
+    .suggestions-list {
+      position: absolute;
+      top: calc(100% + 4px);
+      left: 0;
+      right: 0;
+      background: #ffffff;
+      border: 1px solid #ccd3dd;
+      border-radius: 8px;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+      max-height: 280px;
+      overflow-y: auto;
+      z-index: 1000;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: none;
+    }
+
+    .suggestions-list.active {
+      display: block;
+    }
+
+    .suggestion-item {
+      padding: 10px 14px;
+      cursor: pointer;
+      border-bottom: 1px solid #f0f3f6;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .suggestion-item:last-child {
+      border-bottom: none;
+    }
+
+    .suggestion-item:hover {
+      background: #eef5f1;
+    }
+
+    .suggestion-title {
+      font-weight: bold;
+      color: #172033;
+      font-size: 14px;
+    }
+
+    .suggestion-sub {
+      font-size: 12px;
+      color: #637282;
+      margin-top: 2px;
+    }
+
+    button {
+      border: 2px solid #17694e;
+      border-radius: 7px;
+      padding: 11px 15px;
+      margin: 12px 6px 0 0;
+      cursor: pointer;
+      font: inherit;
+      font-weight: bold;
+      background: #17694e;
+      color: white;
+    }
+
+    button.secondary {
+      background: #e6eee9;
+      color: #174c3c;
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    button:focus-visible,
+    input:focus-visible,
+    select:focus-visible {
+      outline: 4px solid #e4a11b;
+      outline-offset: 2px;
+    }
+
+    #map {
+      width: 100%;
+      height: 440px;
+      border-radius: 12px;
+      z-index: 1;
+    }
+
+    #status {
+      margin-top: 14px;
+      padding: 12px;
+      background: #edf5f0;
+      border-radius: 8px;
+      overflow-wrap: anywhere;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .stat {
+      background: #edf5f0;
+      padding: 16px;
+      border-radius: 8px;
+    }
+
+    .stat strong {
+      display: block;
+      font-size: 22px;
+      margin-top: 6px;
+    }
+
+    .hint {
+      color: #586575;
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .notice {
+      background: #fff4d6;
+      border-left: 5px solid #9b6700;
+      padding: 12px;
+      border-radius: 7px;
+    }
+
+    #directions {
+      padding-left: 24px;
+    }
+
+    #directions li {
+      padding: 5px 0;
+    }
+
+    footer {
+      text-align: center;
+      padding: 20px;
+      color: #586575;
+      font-size: 12px;
+    }
+
+    @media (max-width: 600px) {
+      #map {
+        height: 350px;
+      }
+
+      .panel {
+        padding: 14px;
+      }
+
+      .stats {
+        grid-template-columns: 1fr;
+      }
+
+      button {
+        width: 100%;
+        margin-right: 0;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <h1>BlindPath</h1>
+    <p>Route planner demo for a more accessible township</p>
+  </header>
+
+  <main class="container">
+    <section class="panel">
+      <h2>Plan your journey</h2>
+
+      <p class="notice">
+        <strong>Prototype safety notice:</strong>
+        This demo calculates driving routes. It does not provide verified pedestrian routes or live turn-by-turn guidance.
+      </p>
+
+      <label for="mode">Travel mode</label>
+      <select id="mode" onchange="onModeChanged()">
+        <option value="driving" selected>
+          Driving (supported by this demo)
+        </option>
+        <option value="walking" disabled>
+          Walking (not available yet)
+        </option>
+      </select>
+
+      <!-- Starting Point Input with Dynamic Autocomplete -->
+      <label for="start">Starting point</label>
+      <div class="autocomplete-wrapper">
+        <input
+          id="start"
+          type="text"
+          autocomplete="off"
+          placeholder="Search any place, MRT, address..."
+        >
+        <ul id="start-suggestions" class="suggestions-list" role="listbox"></ul>
+      </div>
+
+      <!-- Destination Input with Dynamic Autocomplete -->
+      <label for="destination">Destination</label>
+      <div class="autocomplete-wrapper">
+        <input
+          id="destination"
+          type="text"
+          autocomplete="off"
+          placeholder="Search destination, station, landmark..."
+        >
+        <ul id="destination-suggestions" class="suggestions-list" role="listbox"></ul>
+      </div>
+
+      <button id="routeBtn" type="button" onclick="findRoute()">
+        Find route
+      </button>
+
+      <button
+        class="secondary"
+        type="button"
+        onclick="useMyLocation()"
+      >
+        Use my location
+      </button>
+
+      <button
+        class="secondary"
+        type="button"
+        onclick="toggleVoiceAnnouncements()"
+      >
+        Voice announcements: <span id="voiceStatus">ON</span>
+      </button>
+
+      <button
+        class="secondary"
+        type="button"
+        onclick="clearRoute()"
+      >
+        Clear
+      </button>
+
+      <div id="status" role="status" aria-live="polite">
+        Enter a starting point and destination to begin.
+      </div>
+
+      <div class="stats">
+        <div class="stat">
+          Distance
+          <strong id="distance">—</strong>
+        </div>
+
+        <div class="stat">
+          Estimated duration
+          <strong id="duration">—</strong>
+        </div>
+      </div>
+
+      <h3>Route steps</h3>
+
+      <p class="hint">
+        These are route instructions from the driving-route service.
+      </p>
+
+      <ol id="directions">
+        <li>Your route instructions will appear here after a route is found.</li>
+      </ol>
+    </section>
+
+    <section class="panel">
+      <h2>Map</h2>
+
+      <div id="map" aria-label="Map showing the selected route"></div>
+
+      <button
+        id="googleBtn"
+        type="button"
+        class="secondary"
+        onclick="openGoogleMaps()"
+        disabled
+      >
+        Open route in Google Maps
+      </button>
+    </section>
+  </main>
+
+  <footer>
+    Map data &copy; OpenStreetMap contributors.
+    Routing by the public OSRM demo service.
+  </footer>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <script>
+    const map = L.map("map").setView([3.139, 101.6869], 12);
+
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution:
+        '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>'
+    }).addTo(map);
+
+    let startMarker = null;
+    let destinationMarker = null;
+    let routeLine = null;
+
+    let startCoords = null;
+    let destinationCoords = null;
+
+    let voiceAnnouncementsEnabled = true;
+
+    const locationCache = new Map();
+    const statusBox = document.getElementById("status");
+    const routeButton = document.getElementById("routeBtn");
+
+    function setStatus(message, shouldSpeak = false) {
+      statusBox.textContent = message;
+      if (shouldSpeak) speak(message);
+    }
+
+    function speak(message) {
+      if (!voiceAnnouncementsEnabled || !("speechSynthesis" in window)) return;
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(message);
+      utterance.lang = "en-MY";
+      utterance.rate = 0.95;
+      window.speechSynthesis.speak(utterance);
+    }
+
+    function toggleVoiceAnnouncements() {
+      voiceAnnouncementsEnabled = !voiceAnnouncementsEnabled;
+      document.getElementById("voiceStatus").textContent = voiceAnnouncementsEnabled ? "ON" : "OFF";
+      if (!voiceAnnouncementsEnabled && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+      setStatus(
+        voiceAnnouncementsEnabled ? "Voice announcements are on." : "Voice announcements are off.",
+        voiceAnnouncementsEnabled
+      );
+    }
+
+    function onModeChanged() {
+      const mode = document.getElementById("mode").value;
+      if (mode === "walking") {
+        setStatus("Walking routes are not available in this prototype. Please choose driving mode.");
+        document.getElementById("mode").value = "driving";
+      } else {
+        setStatus("Driving mode selected.");
+      }
+    }
+
+    function resetResults() {
+      document.getElementById("distance").textContent = "—";
+      document.getElementById("duration").textContent = "—";
+      document.getElementById("googleBtn").disabled = true;
+
+      const list = document.getElementById("directions");
+      list.replaceChildren();
+
+      const item = document.createElement("li");
+      item.textContent = "Your route instructions will appear here after a route is found.";
+      list.appendChild(item);
+    }
+
+    // Live OpenStreetMap search for any place, station, building, or street
+    async function searchPlacesLive(query, signal) {
+      const q = query.trim();
+      if (!q) return [];
+
+      try {
+        const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=8&q=${encodeURIComponent(q)}`;
+        const res = await fetch(url, { signal });
+        if (!res.ok) return [];
+
+        const data = await res.json();
+        return data.map(place => {
+          const address = place.address || {};
+          
+          // Determine the main title (name of building, station, road, or first address element)
+          const title = place.namedetails?.name ||
+                        place.name ||
+                        address.railway ||
+                        address.suburb ||
+                        address.neighbourhood ||
+                        place.display_name.split(",")[0].trim();
+
+          // Build a descriptive subtitle (suburb, city, state)
+          const subParts = [
+            address.suburb,
+            address.city || address.town || address.county,
+            address.state
+          ].filter(Boolean);
+
+          const subtitle = subParts.length > 0 
+            ? subParts.join(", ") 
+            : place.display_name.split(",").slice(1, 4).join(", ").trim();
+
+          return {
+            name: title,
+            displayName: place.display_name,
+            sub: subtitle || place.display_name,
+            lat: parseFloat(place.lat),
+            lon: parseFloat(place.lon)
+          };
+        });
+      } catch (err) {
+        if (err.name === 'AbortError') return null; // Fetch aborted due to user typing
+        return [];
+      }
+    }
+
+    // Google Maps-like dropdown autocomplete handler
+    function setupCustomAutocomplete(inputId, listId, onSelectCallback) {
+      const input = document.getElementById(inputId);
+      const list = document.getElementById(listId);
+      let debounceTimer = null;
+      let abortController = null;
+
+      function closeList() {
+        list.classList.remove("active");
+        list.replaceChildren();
+      }
+
+      input.addEventListener("input", () => {
+        clearTimeout(debounceTimer);
+        if (abortController) {
+          abortController.abort();
+        }
+
+        const text = input.value.trim();
+
+        if (text.length < 2) {
+          closeList();
+          return;
+        }
+
+        debounceTimer = setTimeout(async () => {
+          abortController = new AbortController();
+          const matches = await searchPlacesLive(text, abortController.signal);
+          
+          if (matches === null) return; // Ignore aborted requests
+          list.replaceChildren();
+
+          if (!matches || matches.length === 0) {
+            closeList();
+            return;
+          }
+
+          matches.forEach(item => {
+            const li = document.createElement("li");
+            li.className = "suggestion-item";
+
+            const titleSpan = document.createElement("span");
+            titleSpan.className = "suggestion-title";
+            titleSpan.textContent = item.name;
+
+            const subSpan = document.createElement("span");
+            subSpan.className = "suggestion-sub";
+            subSpan.textContent = item.sub;
+
+            li.appendChild(titleSpan);
+            li.appendChild(subSpan);
+
+            // Mousedown ensures selection registers before input blur
+            li.addEventListener("mousedown", (e) => {
+              e.preventDefault();
+              input.value = item.name;
+              onSelectCallback(item);
+              closeList();
+            });
+
+            list.appendChild(li);
+          });
+
+          list.classList.add("active");
+        }, 300);
+      });
+
+      input.addEventListener("blur", () => {
+        setTimeout(closeList, 200);
+      });
+
+      input.addEventListener("focus", () => {
+        if (input.value.trim().length >= 2 && list.children.length > 0) {
+          list.classList.add("active");
+        }
+      });
+    }
+
+    // Initialize custom autocomplete for both start and destination
+    setupCustomAutocomplete("start", "start-suggestions", (item) => {
+      startCoords = { lat: item.lat, lon: item.lon, name: item.name };
+      locationCache.set(item.name.toLowerCase(), startCoords);
+      locationCache.set(item.displayName.toLowerCase(), startCoords);
+    });
+
+    setupCustomAutocomplete("destination", "destination-suggestions", (item) => {
+      destinationCoords = { lat: item.lat, lon: item.lon, name: item.name };
+      locationCache.set(item.name.toLowerCase(), destinationCoords);
+      locationCache.set(item.displayName.toLowerCase(), destinationCoords);
+    });
+
+    // Fallback Geocoder if the user presses "Find route" without clicking a suggestion
+    async function geocode(place) {
+      const key = place.trim().toLowerCase();
+
+      // Check coordinates format
+      const coordinateMatch = place.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
+      if (coordinateMatch) {
+        return {
+          lat: Number(coordinateMatch[1]),
+          lon: Number(coordinateMatch[2]),
+          name: place
+        };
+      }
+
+      if (locationCache.has(key)) {
+        return locationCache.get(key);
+      }
+
+      const url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(place)}`;
+      const res = await fetch(url);
+      const data = await res.json();
+
+      if (!data || !data.length) {
+        throw new Error(`Location not found: "${place}". Please select an option from the suggestions.`);
+      }
+
+      const result = {
+        lat: Number(data[0].lat),
+        lon: Number(data[0].lon),
+        name: data[0].display_name.split(",")[0]
+      };
+      locationCache.set(key, result);
+      return result;
+    }
+
+    function displayLocations(start, destination) {
+      if (startMarker) map.removeLayer(startMarker);
+      if (destinationMarker) map.removeLayer(destinationMarker);
+
+      startMarker = L.marker([start.lat, start.lon])
+        .addTo(map)
+        .bindPopup(`Starting point: ${start.name || ""}`);
+
+      destinationMarker = L.marker([destination.lat, destination.lon])
+        .addTo(map)
+        .bindPopup(`Destination: ${destination.name || ""}`);
+
+      map.fitBounds(
+        L.latLngBounds([start.lat, start.lon], [destination.lat, destination.lon]),
+        { padding: [35, 35] }
+      );
+
+      startMarker.openPopup();
+    }
+
+    async function getRoute(start, destination) {
+      const coordinates = `${start.lon},${start.lat};${destination.lon},${destination.lat}`;
+      const url = `https://router.project-osrm.org/route/v1/driving/${coordinates}?overview=full&geometries=geojson&steps=true`;
+
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("The routing service is unavailable. Please try again.");
+
+      const data = await response.json();
+      if (data.code !== "Ok" || !data.routes || !data.routes.length) {
+        throw new Error("No driving route was found for those locations.");
+      }
+
+      return data.routes[0];
+    }
+
+    function describeManeuver(step) {
+      const maneuver = step.maneuver || {};
+      const type = maneuver.type || "";
+      const modifier = maneuver.modifier || "";
+      const road = step.name ? ` onto ${step.name}` : "";
+
+      if (type === "depart") return `Start${road}`;
+      if (type === "arrive") return "Arrive at your destination";
+      if (type === "turn") return `Turn ${modifier}${road}`;
+      if (type === "continue" || type === "new name") return `Continue${road}`;
+      if (type === "merge") return `Merge ${modifier}${road}`;
+      if (type === "on ramp") return `Take the ramp${road}`;
+      if (type === "off ramp") return `Take the exit${road}`;
+      if (type === "roundabout" || type === "rotary") return `Enter the roundabout${road}`;
+      if (type === "fork") return `At the fork, keep ${modifier}${road}`;
+      if (type === "end of road") return `At the end of the road, turn ${modifier}${road}`;
+
+      return `${type ? type.replace(/_/g, " ") : "Continue"}${road}`;
+    }
+
+    function showDirections(route) {
+      const list = document.getElementById("directions");
+      list.replaceChildren();
+
+      const steps = [];
+
+      (route.legs || []).forEach(leg => {
+        (leg.steps || []).forEach(step => {
+          const distance =
+            step.distance >= 1000
+              ? (step.distance / 1000).toFixed(1) + " km"
+              : Math.round(step.distance) + " m";
+
+          steps.push(`${describeManeuver(step)} (${distance})`);
+        });
+      });
+
+      if (!steps.length) {
+        const item = document.createElement("li");
+        item.textContent = "No detailed instructions were returned for this route.";
+        list.appendChild(item);
+        return;
+      }
+
+      steps.forEach(instruction => {
+        const item = document.createElement("li");
+        item.textContent = instruction;
+        list.appendChild(item);
+      });
+    }
+
+    async function findRoute() {
+      const startText = document.getElementById("start").value.trim();
+      const destinationText = document.getElementById("destination").value.trim();
+
+      if (!startText || !destinationText) {
+        setStatus("Please enter both a starting point and a destination.", true);
+        return;
+      }
+
+      routeButton.disabled = true;
+      routeButton.textContent = "Finding route...";
+      resetResults();
+
+      try {
+        setStatus("Locating points...");
+        const start = (startCoords && startCoords.name === startText) ? startCoords : await geocode(startText);
+        const destination = (destinationCoords && destinationCoords.name === destinationText) ? destinationCoords : await geocode(destinationText);
+
+        startCoords = start;
+        destinationCoords = destination;
+
+        displayLocations(start, destination);
+
+        setStatus("Calculating the route...");
+        const route = await getRoute(start, destination);
+
+        if (routeLine) {
+          map.removeLayer(routeLine);
+        }
+
+        routeLine = L.geoJSON(route.geometry, {
+          style: {
+            color: "#1769ff",
+            weight: 5,
+            opacity: 0.85
+          }
+        }).addTo(map);
+
+        map.fitBounds(routeLine.getBounds(), { padding: [35, 35] });
+
+        const km = route.distance / 1000;
+        const minutes = Math.round(route.duration / 60);
+
+        document.getElementById("distance").textContent = km.toFixed(2) + " km";
+        document.getElementById("duration").textContent =
+          minutes >= 60
+            ? Math.floor(minutes / 60) + " hr " + (minutes % 60) + " min"
+            : minutes + " min";
+
+        showDirections(route);
+        document.getElementById("googleBtn").disabled = false;
+
+        const timeText =
+          minutes >= 60
+            ? Math.floor(minutes / 60) + " hours and " + (minutes % 60) + " minutes"
+            : minutes + " minutes";
+
+        setStatus(
+          `Driving route found. Distance ${km.toFixed(1)} kilometres. Estimated duration ${timeText}.`,
+          true
+        );
+      } catch (error) {
+        setStatus(error.message || "Something went wrong.", true);
+      } finally {
+        routeButton.disabled = false;
+        routeButton.textContent = "Find route";
+      }
+    }
+
+    function useMyLocation() {
+      if (!navigator.geolocation) {
+        setStatus("Your browser does not support location services.", true);
+        return;
+      }
+
+      setStatus("Requesting your location...");
+
+      navigator.geolocation.getCurrentPosition(
+        position => {
+          const lat = position.coords.latitude;
+          const lon = position.coords.longitude;
+
+          startCoords = { lat, lon, name: "Your current location" };
+          document.getElementById("start").value = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+          map.setView([lat, lon], 15);
+
+          if (startMarker) map.removeLayer(startMarker);
+
+          startMarker = L.marker([lat, lon])
+            .addTo(map)
+            .bindPopup("Your current location")
+            .openPopup();
+
+          setStatus("Current location loaded as start point.", true);
+        },
+        error => {
+          setStatus("Could not get your location. Please check browser permissions.", true);
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+      );
+    }
+
+    function openGoogleMaps() {
+      if (!startCoords || !destinationCoords) return;
+
+      const url = `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(startCoords.lat + "," + startCoords.lon)}&destination=${encodeURIComponent(destinationCoords.lat + "," + destinationCoords.lon)}&travelmode=driving`;
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+
+    function clearRoute() {
+      if (startMarker) map.removeLayer(startMarker);
+      if (destinationMarker) map.removeLayer(destinationMarker);
+      if (routeLine) map.removeLayer(routeLine);
+
+      startMarker = null;
+      destinationMarker = null;
+      routeLine = null;
+
+      startCoords = null;
+      destinationCoords = null;
+
+      document.getElementById("start").value = "";
+      document.getElementById("destination").value = "";
+      document.getElementById("start-suggestions").replaceChildren();
+      document.getElementById("destination-suggestions").replaceChildren();
+
+      resetResults();
+
+      if ("speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+
+      setStatus("Map cleared. Enter a new journey to begin.");
+      map.setView([3.139, 101.6869], 12);
+    }
+
+    window.addEventListener("load", () => {
+      map.invalidateSize();
+    });
+  </script>
+</body>
+</html>
